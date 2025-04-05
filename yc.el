@@ -58,6 +58,7 @@
 ;;;  ・yc-stop-chars     ANK-漢字変換時に取り込む文字列に
 ;;;                      含めない文字列を設定する
 ;;;  ・yc-server-host    cannaserver の動いているホスト名を設定する
+;;;  ・yc-server-port    cannaserver へのポート番号を設定する
 ;;;  ・yc-use-fence      fence表示の飾り文字(||)を表示する
 ;;;  ・yc-use-color      fence表示をカラー表示する
 
@@ -172,6 +173,10 @@
   "*cannaserver が動いているホスト名を指定する。
 nil の場合、localhost を指定した事になる"
   :type 'string
+  :group 'yc)
+(defcustom yc-server-port 5680
+  "*cannaserverへのポート番号を指定する。"
+  :type 'integer
   :group 'yc)
 (defcustom yc-enable-hankaku t
   "*半角かなを字種変換候補として有効にする。
@@ -383,17 +388,20 @@ OBJ を返却する。"
 		     (make-network-process
 		      :name "canna"
 		      :buffer yc-debug
+		      :service yc-server-port
 		      :remote "/tmp/.iroha_unix/IROHA")
 		   (let ((process-connection-type nil))
 		     (start-process "canna" yc-debug yc-icanna-path))))
 		(t (with-timeout (1 nil)
 		     (condition-case nil
 			 (open-network-stream
-			  "canna" yc-debug yc-server-host 5680)
+			  "canna" yc-debug yc-server-host yc-server-port)
 		       (error nil)))))))
   (when (processp yc-server)
     (put 'yc-server 'init nil)
-    (process-kill-without-query yc-server)
+    (if (boundp 'process-kill-without-query)
+	(process-kill-without-query yc-server)
+      (set-process-query-on-exit-flag yc-server nil))
     (when yc-debug
       (unwind-protect
 	  (progn
@@ -2071,7 +2079,7 @@ OBJ を返却する。"
 ;; 文節を指定しない場合、現在の文節が対象となる
 ;; 読みを取得した文節はその読みをキャッシュする
 ;; cut が 非nil の場合、指定文節以降の読みを削除する
-(defun yc-yomi (&optional idx &optional cut)
+(defun yc-yomi (&optional idx cut)
   (if (integerp idx)
       (yc-put-bunsetsu-yomi idx (yc-get-bunsetsu-yomi idx cut) cut)
     (yc-put-bunsetsu-yomi yc-mark (yc-get-bunsetsu-yomi yc-mark cut) cut)))
@@ -3228,7 +3236,9 @@ OBJ を返却する。"
     (setq i (1+ i))))
 
 (defun yc-input-mode-function ()
-  (setq inactivate-current-input-method-function 'yc-inactivate)
+  (if (>= emacs-major-version 29)
+      (setq deactivate-current-input-method-function 'yc-inactivate)
+      (setq inactivate-current-input-method-function 'yc-inactivate))
   (setq current-input-method-title "あ")
   (yc-open)
   (remove-hook 'input-method-activate-hook 'yc-input-mode-function))
@@ -3243,12 +3253,16 @@ OBJ を返却する。"
 			  (> (prefix-numeric-value arg) 0)))
     (if yc-input-mode
 	(progn
-	  (setq inactivate-current-input-method-function 'yc-inactivate)
+	  (if (>= emacs-major-version 29)
+	      (setq deactivate-current-input-method-function 'yc-inactivate)
+	      (setq inactivate-current-input-method-function 'yc-inactivate))
 	  (setq current-input-method-title "あ")
 	      (add-hook 'input-method-activate-hook 'yc-input-mode-function);)
 	  (if (eq (selected-window) (minibuffer-window))
 	      (add-hook 'minibuffer-exit-hook 'yc-exit-from-minibuffer)))
-      (setq inactivate-current-input-method-function nil)
+      (if (>= emacs-major-version 29)
+	  (setq deactivate-current-input-method-function nil)
+	  (setq inactivate-current-input-method-function nil))
       (setq current-input-method-title nil))
     (force-mode-line-update t));)
 
